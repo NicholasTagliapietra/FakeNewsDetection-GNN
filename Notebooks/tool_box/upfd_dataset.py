@@ -1,5 +1,4 @@
-import numpy as np
-import matplotlib.pyplot as plt
+
 
 from torch_geometric.data import InMemoryDataset
 
@@ -169,47 +168,5 @@ class ext_UPFD(InMemoryDataset):
 
 
 
-def plot_hist(hists):
-
-    labels = ['Loss', 'Accuracy']
-    accs, scores = [], {}
-
-    for hist in hists:
-        title, _, hist, score = hist
-        scores[title] = score
-        acc_losses_t, acc_losses_v = np.asarray(hist[0]), np.asarray(hist[1])
-        accs.append([title, acc_losses_v[:, 1]])
-        fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(10, 5))
-        fig.suptitle(f'Dataset: {title}', fontsize=16)
-        for i, l in enumerate(labels):
-            axs[i].plot(acc_losses_t[:, i], label=f'{l} train')
-            axs[i].plot(acc_losses_v[:, i], '--', label=f'{l} val')
-            axs[i].set_title(f'{l} evolution')
-            axs[i].set_xlabel('Epochs')
-            axs[i].set_ylabel(l)
-            axs[i].grid()
-            axs[i].legend()
-        plt.show()
-
-    fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(10, 5))
-    fig.suptitle('Resume', fontsize=16)
-    
-    for x in accs:
-        axs[0].set_title('Evolution of val-accuracy')
-        axs[0].plot(x[1], label=x[0])
-    axs[0].set_xlabel('Epochs')
-    axs[0].set_ylabel('Accuracy')
-    axs[0].legend()
-    axs[0].grid()
-    
-    axs[1].set_title('Accuracy on test set')
-    axs[1].set_xlabel('Datasets')
-    axs[1].set_ylabel('Accuracy')
-    axs[1].bar(scores.keys(), scores.values())
-    plt.show()
     
     
-def get_acc(y_pred, y_real):
-    y_pred = y_pred.argmax(dim=-1)
-    correct = int((y_pred == y_real).sum())
-    return correct / len(y_real)
