@@ -1,8 +1,53 @@
+import os
+import os.path as osp
+import scipy.sparse as sp
 
+import networkx as nx
+import numpy as np
 
-from torch_geometric.data import InMemoryDataset
+from google_drive_downloader import GoogleDriveDownloader as gdd
 
+import torch
+from torch_geometric.transforms import ToUndirected
+from torch_geometric.utils.convert import to_networkx
+from torch_geometric.data import Data, InMemoryDataset
+from torch_geometric.io import read_txt_array
+from torch_sparse import coalesce
 
+class tool():
+
+    # GRAPH
+    def g_avg_dg(G):
+        return np.mean([d for _, d in G.degree()])
+
+    def g_std_dg(G):
+        return np.std([d for _, d in G.degree()])
+
+    def g_root_dg(G):
+        return G.degree()[0]
+    
+    def g_root_cc(G):
+        return nx.closeness_centrality(G, 0)
+    
+    def g_max_cc(G):
+        return max(nx.closeness_centrality(G).values())
+    
+    def g_max_bc(G):
+        return max(nx.betweenness_centrality(G).values())
+        
+
+    # NODE
+    def n_cc(G):
+        return list(nx.closeness_centrality(G).values())
+
+    def n_bc(G):
+        return list(nx.betweenness_centrality(G).values())
+    
+    def n_dg(G):
+        return list(dict(G.degree()).values())
+    
+nodes_f = {n:f for n, f in tool.__dict__.items() if n[:2] == 'n_'}
+graphs_f = {n:f for n, f in tool.__dict__.items() if n[:2] == 'g_'}
     
 class ext_UPFD(InMemoryDataset):
 

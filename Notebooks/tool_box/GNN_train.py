@@ -41,7 +41,8 @@ def train_step(model, data, optimizer, loss_f):
         loss.backward()
         optimizer.step()
 
-    return round(tot_loss/len(data), 2), round(acc/len(data), 2)
+    return tot_loss/len(data), acc/len(data)
+    #return round(tot_loss/len(data), 2), round(acc/len(data), 2)
 
 @torch.no_grad()
 def val_step(model, data, loss_f):
@@ -55,7 +56,8 @@ def val_step(model, data, loss_f):
 
         acc += get_acc(out, y_real)
         tot_loss += loss_f(out, y_real).item()
-    return round(tot_loss/len(data), 2), round(acc/len(data), 2)
+    return tot_loss/len(data), acc/len(data)
+    #return round(tot_loss/len(data), 2), round(acc/len(data), 2)
 
 def train(model, data_train, data_val, epochs=100, lr=0.001, wd=0.01, batch_size=128):
     acc_losses_t, acc_losses_v = [], []
