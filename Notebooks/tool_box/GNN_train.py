@@ -22,19 +22,27 @@ def test_accuracy(model, data):
 
         acc += get_acc(out, y_real)
         
-    return round(acc/len(data), 2)
+    return acc/len(data)
 
 
 def train_step(model, data, optimizer, loss_f):
     model.train()
     tot_loss, acc = 0, 0
+    
+    g_feat = len(data.dataset.g_features) != 0
+    
     for batch in data:
         batch.to(device)
         optimizer.zero_grad()
-
-        out = model(batch.x, batch.edge_index, batch.batch, batch.y[:, 1:])
-        y_real = batch.y[:, 0].type(torch.int64)
         
+        if g_feat:
+            out = model(batch.x, batch.edge_index, batch.batch, batch.y[:, 1:])
+            y_real = batch.y[:, 0].type(torch.int64)
+        else:
+            out = model(batch.x, batch.edge_index, batch.batch, batch.y[:])
+            y_real = batch.y[:].type(torch.int64)
+            y_real = torch.squeeze(y_real)
+            
         acc += get_acc(out, y_real)
         loss = loss_f(out, y_real) 
         tot_loss += loss.item()
@@ -43,22 +51,30 @@ def train_step(model, data, optimizer, loss_f):
         optimizer.step()
 
     return tot_loss/len(data), acc/len(data)
-    #return round(tot_loss/len(data), 2), round(acc/len(data), 2)
+    
 
 @torch.no_grad()
 def val_step(model, data, loss_f):
     model.eval()
     tot_loss, acc = 0, 0
+    
+    n_feat = len(data.dataset.g_features) != 0
+    
     for batch in data:
         batch.to(device)
         
-        out = model(batch.x, batch.edge_index, batch.batch, batch.y[:, 1:])
-        y_real = batch.y[:, 0].type(torch.int64)
-
+        if n_feat:
+            out = model(batch.x, batch.edge_index, batch.batch, batch.y[:, 1:])
+            y_real = batch.y[:, 0].type(torch.int64)
+        else:
+            out = model(batch.x, batch.edge_index, batch.batch, batch.y[:])
+            y_real = batch.y[:].type(torch.int64)
+            y_real = torch.squeeze(y_real)
+                                                                        
         acc += get_acc(out, y_real)
         tot_loss += loss_f(out, y_real).item()
     return tot_loss/len(data), acc/len(data)
-    #return round(tot_loss/len(data), 2), round(acc/len(data), 2)
+    
 
 def train(model, data_train, data_val, epochs=100, lr=0.001, wd=0.01, batch_size=128):
     acc_losses_t, acc_losses_v = [], []
@@ -86,6 +102,29 @@ def train_all(model_class, datasets, emb_size=100, epochs=100, lr=0.001, wd=0.01
         hist = train(model, x[1], x[2], epochs=epochs, lr=lr, wd=wd, batch_size=batch_size)
         score = test_accuracy(model, x[3])
         models.append([x[0], model, hist, score])
+    return models
+
+def train_all_optuna(model_class, datasets, epochs=100):
+    models = []
+    
+    for x in datasets:
+        print(f'--> Train on: {x[0]}')
+        embedding_space_dim, learning_rate, weight_decay, batch_size = optimize_GNN(model_class, x[1], x[2], num_trials = 40, epochs_max = epochs)
+        
+        # Train Model with the Best Hyperparameters
+        # Initialize Dataloaders
+        train_loader = DataLoader(x[1], batch_size=batch_size, shuffle=True)
+        val_loader = DataLoader(x[2], batch_size=batch_size, shuffle=True)
+        test_loader = DataLoader(x[3], batch_size=batch_size, shuffle=False)
+
+        # Initialize Model with best Hyperparameters
+        num_node_features = x[1].num_features
+        num_graph_features = len(x[1].g_features)
+        best_model = model_class(num_n_feature = num_node_features, num_g_feature = num_graph_features, emb_size = embedding_space_dim).to(device)
+        hist = train(best_model, x[1], x[2], epochs=epochs, lr=learning_rate, wd=weight_decay, batch_size=batch_size)
+        score = test_accuracy(best_model, x[3])
+        models.append([x[0], best_model, hist, score])
+        
     return models
 
 
@@ -180,12 +219,13 @@ class Objective(object):
         
         # Generate Model
         num_node_features = self.train_dataset.num_features
-        num_graph_features = self.train_dataset.g_features
+        num_graph_features = len(self.train_dataset.g_features)
         model = self.GNN(num_n_feature = num_node_features, num_g_feature = num_graph_features, emb_size = embedding_space_dim).to(device)
 
         # Initialize Dataloaders
         train_loader = DataLoader(self.train_dataset, batch_size=batch_size, shuffle=True)
         val_loader = DataLoader(self.val_dataset, batch_size=batch_size, shuffle=True)
+
 
         optimizer = torch.optim.Adam(model.parameters(), lr = learning_rate, weight_decay = weight_decay)
         loss_f = torch.nn.NLLLoss()
@@ -193,8 +233,19 @@ class Objective(object):
         return train_optuna(trial,model,optimizer,loss_f, train_loader, val_loader, epochs = self.epochs_max)
     
 def optimize_GNN(GNN, train_dataset, val_dataset, num_trials = 40, epochs_max = 60):
-    study = optuna.create_study(direction = "maximize")
+    search_space = {"learning_rate":[0.001, 0.005, 0.01],
+                    "weight_decay":[0.001, 0.005, 0.01],
+                    "batch_size":[128, 256, 512],
+                    "embedding_space_dim":[60,80,100,120,140,160]}
+    study = optuna.create_study(direction = "maximize", sampler = optuna.samplers.GridSampler(search_space))
     objective = Objective(GNN,train_dataset,val_dataset,epochs_max = epochs_max)
     study.optimize(objective,n_trials = num_trials)
-    return study
+    
+    # Extract the best hyperparameters
+    embedding_space_dim = study.best_params["embedding_space_dim"]
+    learning_rate = study.best_params["learning_rate"]
+    weight_decay = study.best_params["weight_decay"]
+    batch_size = study.best_params["batch_size"]
+    
+    return embedding_space_dim, learning_rate, weight_decay, batch_size
   
