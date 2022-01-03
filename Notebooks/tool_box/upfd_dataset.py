@@ -1,18 +1,17 @@
 import os
+import torch
+import numpy as np
+import networkx as nx
 import os.path as osp
 import scipy.sparse as sp
 
-import networkx as nx
-import numpy as np
 
-from google_drive_downloader import GoogleDriveDownloader as gdd
-
-import torch
-from torch_geometric.transforms import ToUndirected
+from torch_sparse import coalesce
+from torch_geometric.io import read_txt_array
 from torch_geometric.utils.convert import to_networkx
 from torch_geometric.data import Data, InMemoryDataset
-from torch_geometric.io import read_txt_array
-from torch_sparse import coalesce
+from google_drive_downloader import GoogleDriveDownloader as gdd
+
 
 class tool():
 
