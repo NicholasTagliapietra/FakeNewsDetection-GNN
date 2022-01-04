@@ -215,11 +215,12 @@ def get_acc(y_pred, y_real):
 def plot_hist(hists):
 
     labels = ['Loss', 'Accuracy']
-    accs, scores = [], {}
-
+    accs, scores, titles = [], [], []
+    
     for hist in hists:
         title, _, hist, score = hist
-        scores[title] = score
+        scores.append(score)
+        titles.append(title)
         acc_losses_t, acc_losses_v = np.asarray(hist[0]), np.asarray(hist[1])
         accs.append([title, acc_losses_v[:, 1]])
         fig, axs = plt.subplots(1, 2, constrained_layout=True, figsize=(10, 5))
@@ -245,11 +246,13 @@ def plot_hist(hists):
     axs[0].legend()
     axs[0].grid()
     
-    round_scores = list(map(list(scores.values()), lambda x:round(x, 2)))
+    round_scores = [round(score,3) for score in scores]
+    #round_scores = list(map(list(scores.values()), lambda x:round(x, 2)))
     axs[1].set_title(f'Accuracy on test set: {round_scores}')
     axs[1].set_xlabel('Datasets')
     axs[1].set_ylabel('Accuracy')
-    axs[1].bar(scores.keys(), scores.values())
+    #axs[1].bar(scores.keys(), scores.values())
+    axs[1].bar(titles, scores)
     plt.show()
     
 
