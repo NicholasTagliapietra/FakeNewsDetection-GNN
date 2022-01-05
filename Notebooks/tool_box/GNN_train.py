@@ -14,16 +14,20 @@ def test_accuracy(model, data):
     acc = 0
     model.eval()
     data = DataLoader(data, batch_size=128, shuffle=False)
+    y_pred, y_real = [], []
     
     for batch in data:
         batch.to(device)
         
         out = model(batch.x, batch.edge_index, batch.batch, batch.y[:, 1:])
-        y_real = batch.y[:, 0].type(torch.int64)
-
-        acc += get_acc(out, y_real)
+        y = batch.y[:, 0].type(torch.int64)
         
-    return acc/len(data)
+        y_real += list(y.detach().cpu().numpy())
+        y_pred += list(out.detach().cpu().numpy())
+
+        acc += get_acc(out, y)
+
+    return acc/len(data), np.array(y_pred), np.array(y_real)
 
 
 def train_step(model, data, optimizer, loss_f):
@@ -115,7 +119,7 @@ def train_all_and_optimize(model_class, datasets, epochs=100):
         hist = train(best_model, x[1], x[2], epochs=epochs, 
                      lr=learning_rate, wd=weight_decay, 
                      batch_size=batch_size)
-        score = test_accuracy(best_model, x[3])
+        score, _, _ = test_accuracy(best_model, x[3])
         models.append([x[0], best_model, hist, score])
         
     return models
@@ -246,12 +250,10 @@ def plot_hist(hists):
     axs[0].legend()
     axs[0].grid()
     
-    round_scores = [round(score,3) for score in scores]
-    #round_scores = list(map(list(scores.values()), lambda x:round(x, 2)))
+    round_scores = [round(score, 3) for score in scores]
     axs[1].set_title(f'Accuracy on test set: {round_scores}')
     axs[1].set_xlabel('Datasets')
     axs[1].set_ylabel('Accuracy')
-    #axs[1].bar(scores.keys(), scores.values())
     axs[1].bar(titles, scores)
     plt.show()
     
