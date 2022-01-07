@@ -1,19 +1,51 @@
 import os
 import torch
+import functools
 import numpy as np
 import networkx as nx
 import os.path as osp
 import scipy.sparse as sp
-import pickle as pk
+
 
 from torch_sparse import coalesce
+from sklearn.preprocessing import Normalizer
 from torch_geometric.io import read_txt_array
 from torch_geometric.utils.convert import to_networkx
 from torch_geometric.data import Data, InMemoryDataset
 from google_drive_downloader import GoogleDriveDownloader as gdd
 
 
-class tool():
+def closeness_centrality(G, u=None, distance=None, normalized=True):
+
+    if distance is not None:
+        # use Dijkstra's algorithm with specified attribute as edge weight 
+        path_length = functools.partial(nx.single_source_dijkstra_path_length,
+                                        weight=distance)
+    else:
+        path_length = nx.single_source_shortest_path_length
+
+    if u is None:
+        nodes = G.nodes()
+    else:
+        nodes = [u]
+    closeness_centrality = {}
+    for n in nodes:
+        sp = path_length(G,n)
+        totsp = sum(sp.values())
+        if totsp > 0.0 and len(G) > 1:
+            closeness_centrality[n] = (len(sp)-1.0) / totsp
+            # normalize to number of nodes-1 in connected part
+            if normalized:
+                s = (len(sp)-1.0) / ( len(G) - 1 )
+                closeness_centrality[n] *= s
+        else:
+            closeness_centrality[n] = 0.0
+    if u is not None:
+        return closeness_centrality[u]
+    else:
+        return closeness_centrality
+
+class features_box():
 
     # GRAPH
     def g_avg_dg(G):
@@ -26,10 +58,10 @@ class tool():
         return G.degree()[0]
     
     def g_root_cc(G):
-        return nx.closeness_centrality(G, 0)
+        return closeness_centrality(G, 0)
     
     def g_max_cc(G):
-        return max(nx.closeness_centrality(G).values())
+        return max(closeness_centrality(G).values())
     
     def g_max_bc(G):
         return max(nx.betweenness_centrality(G).values())
@@ -37,7 +69,7 @@ class tool():
 
     # NODE
     def n_cc(G):
-        return list(nx.closeness_centrality(G).values())
+        return list(closeness_centrality(G).values())
 
     def n_bc(G):
         return list(nx.betweenness_centrality(G).values())
@@ -45,8 +77,8 @@ class tool():
     def n_dg(G):
         return list(dict(G.degree()).values())
     
-nodes_f = {n:f for n, f in tool.__dict__.items() if n[:2] == 'n_'}
-graphs_f = {n:f for n, f in tool.__dict__.items() if n[:2] == 'g_'}
+nodes_f = {n:f for n, f in features_box.__dict__.items() if n[:2] == 'n_'}
+graphs_f = {n:f for n, f in features_box.__dict__.items() if n[:2] == 'g_'}
     
 class ext_UPFD(InMemoryDataset):
 
@@ -120,7 +152,16 @@ class ext_UPFD(InMemoryDataset):
                     ft_i.append(fct(g))
                 g_features.append(ft_i)
         g_features = np.asarray(g_features)
+        
+        if len(g_features) > 0:
+            g_features = np.transpose(self.normalize(np.transpose(g_features)))
+            return g_features
         return torch.Tensor(g_features)
+    
+    def normalize(self, X):
+        transformer = Normalizer(norm='max').fit(X)
+        X_norm = transformer.transform(X)
+        return torch.Tensor(X_norm)
     
     def add_new_features(self, x, y):
         
@@ -128,24 +169,12 @@ class ext_UPFD(InMemoryDataset):
         
         new_n_features = self.get_n_features(G)
         x_new = x.type(torch.float32) if len(new_n_features) == 0 else torch.concat([x, new_n_features], axis=1)
-
+        x_new = self.normalize(x_new)
             
         new_g_features = self.get_g_features(G)
         y_new = y.reshape(-1, 1).type(torch.float32) if len(new_g_features) == 0 else torch.t(torch.vstack([y, new_g_features]))
-        
-        # Divide features by their respective max value, to have them on the interval [0,1]
-        max = np.amax(np.array(new_n_features), axis = 0)
-        #min = np.amin(np.array(new_n_features), axis = 0)
-        for i in range(new_n_features.size()[-1]):
-            new_n_features[:,i] = new_n_features[:,i]/max[i]
-           
-        max = np.amax(np.array(new_g_features), axis = 1)
-        #min = np.amin(np.array(new_g_features), axis = 1)
-        for i in range(new_g_features.size()[0]):
-            new_g_features[i,:] = new_g_features[i,:]/max[i]
-            
-        changed = len(new_n_features) != 0 or len(new_g_features) != 0
-        return x_new, y_new, changed
+    
+        return x_new, y_new
 
     def process(self):
         
@@ -160,7 +189,7 @@ class ext_UPFD(InMemoryDataset):
         self.data = Data(x=x, edge_index=edge_index, y=y)
         
         # Compute new features and add them
-        x_new, y_new, changed = self.add_new_features(x, y)
+        x_new, y_new = self.add_new_features(x, y)
         self.data = Data(x=x_new, edge_index=edge_index, y=y_new) 
         
         
@@ -220,9 +249,3 @@ class ext_UPFD(InMemoryDataset):
         return (f'{self.__class__.__name__}({len(self)}, name={self.source}, '
                 f'raw_feature={self.raw_feature}, node feature={self.n_features}, '
                 f'graph feature={self.g_features})')
-
-
-
-
-    
-    
