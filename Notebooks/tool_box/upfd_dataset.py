@@ -4,7 +4,7 @@ import numpy as np
 import networkx as nx
 import os.path as osp
 import scipy.sparse as sp
-
+import pickle as pk
 
 from torch_sparse import coalesce
 from torch_geometric.io import read_txt_array
@@ -128,10 +128,22 @@ class ext_UPFD(InMemoryDataset):
         
         new_n_features = self.get_n_features(G)
         x_new = x.type(torch.float32) if len(new_n_features) == 0 else torch.concat([x, new_n_features], axis=1)
-        
+
+            
         new_g_features = self.get_g_features(G)
         y_new = y.reshape(-1, 1).type(torch.float32) if len(new_g_features) == 0 else torch.t(torch.vstack([y, new_g_features]))
         
+        # Divide features by their respective max value, to have them on the interval [0,1]
+        max = np.amax(np.array(new_n_features), axis = 0)
+        #min = np.amin(np.array(new_n_features), axis = 0)
+        for i in range(new_n_features.size()[-1]):
+            new_n_features[:,i] = new_n_features[:,i]/max[i]
+           
+        max = np.amax(np.array(new_g_features), axis = 1)
+        #min = np.amin(np.array(new_g_features), axis = 1)
+        for i in range(new_g_features.size()[0]):
+            new_g_features[i,:] = new_g_features[i,:]/max[i]
+            
         changed = len(new_n_features) != 0 or len(new_g_features) != 0
         return x_new, y_new, changed
 
